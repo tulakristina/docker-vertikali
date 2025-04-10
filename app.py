@@ -35,11 +35,22 @@ def index():
         try:
             source_wb = load_workbook(source_file, data_only=True)
             vda_source = source_wb.active
+
+
             # Pirmas stulpelis lentelės
-            values_1 = [[int(vda_source.cell(row=row, column=col).value) if vda_source.cell(row=row, column=col).value is not None else 0 for col in range(3, 11)] for row in range(2, 20)]
+
+            def safe_int(value):
+                try:
+                    return int(value)
+                except (TypeError, ValueError):
+                    return 0
+            
+            #values_1 = [[int(vda_source.cell(row=row, column=col).value) if vda_source.cell(row=row, column=col).value is not None else 0 for col in range(3, 11)] for row in range(2, 20)]
+            values_1 = [[safe_int(vda_source.cell(row=row, column=col).value) for col in range(3, 11)] for row in range(2, 20)]
 
             # antras stulpelis
-            values_2 = [[int(vda_source.cell(row=row, column=col).value) if vda_source.cell(row=row, column=col).value is not None else 0 for col in range(3, 11)] for row in range(20, 54)]
+            #values_2 = [[int(vda_source.cell(row=row, column=col).value) if vda_source.cell(row=row, column=col).value is not None else 0 for col in range(3, 11)] for row in range(20, 54)]
+            values_2 = [[safe_int(vda_source.cell(row=row, column=col).value) for col in range(3, 11)] for row in range(20, 54)]
         except Exception as e:
             return f"Nepavyko nuskaityti failo: {e}", 500
 
