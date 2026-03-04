@@ -1,0 +1,6 @@
+bendroji_biblioteku_ataskaita_*.csv
+bendroji_biblioteku_ataskaita_*.xlsx
+Statistika_bendroji_bendra_sablonas.xlsx
+vertikali_palyginimai_pvz.xls
+__pycache__/
+*.pyc
