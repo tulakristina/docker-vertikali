@@ -1,15 +1,13 @@
 from flask import Flask, render_template_string, request, send_file
 from openpyxl import load_workbook, Workbook
-from openpyxl.styles import Font, Alignment, PatternFill
 import csv
 import io
+import copy
 
 app = Flask(__name__)
 
-with open("tuscias_ver.xlsx", "rb") as f:
-    TUSCIAS_BYTES = f.read()
-with open("Statistika_bendroji_bendra_sablonas.xlsx", "rb") as f:
-    SABLONAS_BYTES = f.read()
+TUSCIAS_WB  = load_workbook("tuscias_ver.xlsx")
+SABLONAS_WB = load_workbook("sablonas_ready.xlsx")
 
 
 def safe_int(value):
@@ -141,7 +139,7 @@ PART2_MAPPING = [
 
 
 def write_standard_report(values_1, values_2):
-    template_wb = load_workbook(io.BytesIO(TUSCIAS_BYTES))
+    template_wb = copy.deepcopy(TUSCIAS_WB)
     ws = template_wb.active
 
     start_row_1, start_col = 35, 13
@@ -158,7 +156,8 @@ def write_standard_report(values_1, values_2):
 
 
 def write_comparison_report(cur_v1, cur_v2, prev_v1, prev_v2, cur_year, prev_year):
-    template_wb = load_workbook(io.BytesIO(SABLONAS_BYTES))
+    # Font normalisation, yellow-fill clearing and row hiding are pre-baked in sablonas_ready.xlsx
+    template_wb = copy.deepcopy(SABLONAS_WB)
     ws = template_wb.active
 
     DATA_COL = 14  # first of 8 data columns (cols 14-21)
@@ -201,27 +200,6 @@ def write_comparison_report(cur_v1, cur_v2, prev_v1, prev_v2, cur_year, prev_yea
             pct = fmt_pct(cv, pv)
             if pct:
                 ws.cell(row=tmpl_base + 3, column=DATA_COL + j).value = pct
-
-    # Normalise data cells: remove bold, centre-align (keep template size 9 and font name)
-    data_font = Font(name='Times New Roman', size=9, bold=False)
-    data_align = Alignment(horizontal='center', vertical='center')
-    for tmpl_base in PART1_MAPPING + PART2_MAPPING:
-        for row_offset in range(4):
-            for j in range(8):
-                cell = ws.cell(row=tmpl_base + row_offset, column=DATA_COL + j)
-                cell.font = data_font
-                cell.alignment = data_align
-
-    # Clear yellow bgColor (FFFFFFCC) from specific template cells that have it
-    no_fill = PatternFill(fill_type=None)
-    for r in range(194, 198):
-        ws.cell(row=r, column=21).fill = no_fill
-    for r in (258, 259):
-        ws.cell(row=r, column=2).fill = no_fill
-
-    # Hide empty rows (types not present in source) — hiding preserves merged cells
-    for r in list(range(91, 95)) + list(range(218, 222)) + list(range(238, 250)):
-        ws.row_dimensions[r].hidden = True
 
     return template_wb
 
