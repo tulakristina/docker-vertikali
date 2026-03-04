@@ -6,6 +6,11 @@ import io
 
 app = Flask(__name__)
 
+with open("tuscias_ver.xlsx", "rb") as f:
+    TUSCIAS_BYTES = f.read()
+with open("Statistika_bendroji_bendra_sablonas.xlsx", "rb") as f:
+    SABLONAS_BYTES = f.read()
+
 
 def safe_int(value):
     try:
@@ -136,7 +141,7 @@ PART2_MAPPING = [
 
 
 def write_standard_report(values_1, values_2):
-    template_wb = load_workbook("tuscias_ver.xlsx")
+    template_wb = load_workbook(io.BytesIO(TUSCIAS_BYTES))
     ws = template_wb.active
 
     start_row_1, start_col = 35, 13
@@ -153,7 +158,7 @@ def write_standard_report(values_1, values_2):
 
 
 def write_comparison_report(cur_v1, cur_v2, prev_v1, prev_v2, cur_year, prev_year):
-    template_wb = load_workbook("Statistika_bendroji_bendra_sablonas.xlsx")
+    template_wb = load_workbook(io.BytesIO(SABLONAS_BYTES))
     ws = template_wb.active
 
     DATA_COL = 14  # first of 8 data columns (cols 14-21)
