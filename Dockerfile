@@ -15,4 +15,4 @@ COPY . .
 EXPOSE 8080
 
 # Run the application.
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "app:app"]
