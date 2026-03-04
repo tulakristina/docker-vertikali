@@ -3,12 +3,13 @@ from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 import csv
 import io
-import copy
 
 app = Flask(__name__)
 
-TUSCIAS_WB  = load_workbook(io.BytesIO(open("tuscias_ver.xlsx", "rb").read()))
-SABLONAS_WB = load_workbook(io.BytesIO(open("Statistika_bendroji_bendra_sablonas.xlsx", "rb").read()))
+with open("tuscias_ver.xlsx", "rb") as f:
+    TUSCIAS_BYTES = f.read()
+with open("Statistika_bendroji_bendra_sablonas.xlsx", "rb") as f:
+    SABLONAS_BYTES = f.read()
 
 
 def safe_int(value):
@@ -140,7 +141,7 @@ PART2_MAPPING = [
 
 
 def write_standard_report(values_1, values_2):
-    template_wb = copy.deepcopy(TUSCIAS_WB)
+    template_wb = load_workbook(io.BytesIO(TUSCIAS_BYTES))
     ws = template_wb.active
 
     start_row_1, start_col = 35, 13
@@ -157,7 +158,7 @@ def write_standard_report(values_1, values_2):
 
 
 def write_comparison_report(cur_v1, cur_v2, prev_v1, prev_v2, cur_year, prev_year):
-    template_wb = copy.deepcopy(SABLONAS_WB)
+    template_wb = load_workbook(io.BytesIO(SABLONAS_BYTES))
     ws = template_wb.active
 
     DATA_COL = 14  # first of 8 data columns (cols 14-21)
