@@ -3,6 +3,7 @@ from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 import csv
 import io
+import re
 
 app = Flask(__name__)
 
@@ -10,6 +11,8 @@ with open("tuscias_ver.xlsx", "rb") as f:
     TUSCIAS_BYTES = f.read()
 with open("Statistika_bendroji_bendra_sablonas.xlsx", "rb") as f:
     SABLONAS_BYTES = f.read()
+with open("Bendra ataskaita_2022.xlsx", "rb") as f:
+    PASMULKINTA_BYTES = f.read()
 
 
 def safe_int(value):
@@ -226,6 +229,65 @@ def write_comparison_report(cur_v1, cur_v2, prev_v1, prev_v2, cur_year, prev_yea
     return template_wb
 
 
+_SPECIAL_NAMES = {
+    'neringos m.':  'neringos sav.',
+    'palangos m.':  'palangos m. sav.',
+}
+
+def _norm(name):
+    n = re.sub(r'\braj\.', 'r.', name.strip(), flags=re.IGNORECASE).lower()
+    return _SPECIAL_NAMES.get(n, n)
+
+
+def write_pasmulkinta_report(csv_files):
+    wb = load_workbook(io.BytesIO(PASMULKINTA_BYTES))
+    ws = wb["NEVALST_BUMB"]
+
+    # Build map: normalised name -> row number (skip headers and totals)
+    skip_kw = ('apskritis', 'apskr.', 'iš viso')
+    row_map = {}
+    for r in range(11, 143):
+        v = ws.cell(row=r, column=2).value
+        if v and not any(k in str(v).lower() for k in skip_kw):
+            row_map[_norm(str(v))] = r
+
+    # Aggregate data across all uploaded CSVs
+    # keys: normalised savivaldybė; values: [bib, fondas, _, isduotis, apsilankymai, biblio, internetas]
+    data = {}
+    for raw_bytes in csv_files:
+        text = raw_bytes.decode('utf-8-sig')
+        for row in csv.DictReader(io.StringIO(text)):
+            name = _norm(row['savivaldybe'])
+            d = data.setdefault(name, [0] * 7)
+            d[0] += int(float(row.get('bib_skaicius', 0) or 0))
+            d[1] += int(float(row.get('dok_fondas', 0) or 0))
+            d[2] += int(float(row.get('dok_isduotis', 0) or 0))
+            d[3] += int(float(row.get('fiziniai_apsilankymai', 0) or 0))
+            d[4] += int(float(row.get('prof_bibliotekininkai', 0) or 0))
+            d[5] += int(float(row.get('bib_internetas', 0) or 0))
+
+    # Write to template — 0 for rows with no matching CSV data
+    for norm_name, r in row_map.items():
+        d = data.get(norm_name, [0] * 7)
+        ws.cell(row=r, column=3).value  = d[0]   # bib_skaicius
+        ws.cell(row=r, column=4).value  = d[1]   # dok_fondas
+        ws.cell(row=r, column=5).value  = 0       # vartotojai (undefined)
+        ws.cell(row=r, column=6).value  = d[2]   # dok_isduotis
+        ws.cell(row=r, column=7).value  = d[3]   # fiziniai_apsilankymai
+        ws.cell(row=r, column=8).value  = d[4]   # prof_bibliotekininkai
+        ws.cell(row=r, column=9).value  = 0       # kompiuteriai iš viso (nežinoma)
+        ws.cell(row=r, column=10).value = d[5]   # su internetu ← bib_internetas
+
+    # Remove year label
+    ws.cell(row=4, column=9).value = None
+
+    # Remove all sheets except NEVALST_BUMB
+    for name in [s for s in wb.sheetnames if s != "NEVALST_BUMB"]:
+        del wb[name]
+
+    return wb
+
+
 HTML_TEMPLATE = """
 <!doctype html>
 <html lang="lt">
@@ -319,6 +381,7 @@ HTML_TEMPLATE = """
   <div class="card">
     <h1>Vertikalios ataskaitos kepėja</h1>
     <p class="subtitle">Įkelkite duomenis iš VDA sistemos</p>
+    <p style="margin-bottom:16px;font-size:0.85rem"><a href="/pasmulkinta" style="color:#4a6cf7;text-decoration:none">Pasmulkintos ataskaitos kepėja &rarr;</a></p>
 
     <div class="toggle-row">
       <label class="toggle">
@@ -445,6 +508,129 @@ HTML_TEMPLATE = """
 </html>
 """
 
+PASMULKINTA_TEMPLATE = """
+<!doctype html>
+<html lang="lt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pasmulkintos ataskaitos kepėja</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #f0f2f5;
+      display: flex; justify-content: center; align-items: center;
+      min-height: 100vh; padding: 20px;
+    }
+    .card {
+      background: #fff; border-radius: 12px; padding: 40px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.08);
+      max-width: 560px; width: 100%; text-align: center;
+    }
+    h1 { font-size: 1.3rem; color: #1a1a2e; margin-bottom: 8px; }
+    .subtitle { color: #666; font-size: 0.9rem; margin-bottom: 24px; }
+    .nav { margin-bottom: 20px; }
+    .nav a { color: #4a6cf7; font-size: 0.85rem; text-decoration: none; }
+    .nav a:hover { text-decoration: underline; }
+    .drop-zone {
+      border: 2px dashed #c0c6d0; border-radius: 10px;
+      padding: 32px 20px; cursor: pointer;
+      transition: all 0.2s ease; background: #fafbfc; margin-bottom: 12px;
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: #4a6cf7; background: #eef1ff;
+    }
+    .drop-zone svg { width: 40px; height: 40px; color: #4a6cf7; margin-bottom: 8px; }
+    .drop-zone p { color: #555; font-size: 0.9rem; }
+    .drop-zone .hint { color: #999; font-size: 0.78rem; margin-top: 4px; }
+    input[type="file"] { display: none; }
+    .file-list {
+      text-align: left; margin-bottom: 12px;
+    }
+    .file-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 12px; background: #eef1ff; border-radius: 8px;
+      color: #4a6cf7; font-size: 0.85rem; margin-bottom: 6px;
+    }
+    .file-item .remove { cursor: pointer; color: #e74c3c; font-weight: bold; font-size: 1.1rem; margin-left: 8px; }
+    button[type="submit"] {
+      margin-top: 4px; padding: 12px 32px; font-size: 1rem;
+      background: #4a6cf7; color: #fff; border: none; border-radius: 8px;
+      cursor: pointer; transition: background 0.2s; width: 100%;
+    }
+    button[type="submit"]:hover { background: #3a5ce5; }
+    button[type="submit"]:disabled { background: #b0b8c9; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="nav"><a href="/">&larr; Vertikalios ataskaitos kepėja</a></div>
+    <h1>Pasmulkintos ataskaitos kepėja</h1>
+    <p class="subtitle">Įkelkite CSV failus iš VDA sistemos</p>
+
+    <form action="/pasmulkinta" method="post" enctype="multipart/form-data" id="pForm">
+      <div class="drop-zone" id="pDz">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+             stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0
+                   0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+        </svg>
+        <p>Nutempkite failus čia arba paspauskite</p>
+        <p class="hint">Galima įkelti kelis .csv failus vienu metu</p>
+      </div>
+      <input type="file" name="csv_files" id="pInput" accept=".csv" multiple>
+      <div class="file-list" id="pFileList"></div>
+      <button type="submit" id="pSubmit" disabled>Atsisiųsti ataskaitą</button>
+    </form>
+  </div>
+
+  <script>
+    const dz    = document.getElementById('pDz');
+    const input = document.getElementById('pInput');
+    const list  = document.getElementById('pFileList');
+    const btn   = document.getElementById('pSubmit');
+    let files   = [];
+
+    function render() {
+      list.innerHTML = '';
+      files.forEach((f, i) => {
+        const item = document.createElement('div');
+        item.className = 'file-item';
+        item.innerHTML = `<span>${f.name}</span><span class="remove" data-i="${i}">&times;</span>`;
+        list.appendChild(item);
+      });
+      list.querySelectorAll('.remove').forEach(el =>
+        el.addEventListener('click', () => { files.splice(+el.dataset.i, 1); syncInput(); render(); })
+      );
+      btn.disabled = files.length === 0;
+    }
+
+    function syncInput() {
+      const dt = new DataTransfer();
+      files.forEach(f => dt.items.add(f));
+      input.files = dt.files;
+    }
+
+    function addFiles(newFiles) {
+      Array.from(newFiles).forEach(f => { if (f.name.endsWith('.csv')) files.push(f); });
+      syncInput(); render();
+    }
+
+    dz.addEventListener('click', () => input.click());
+    input.addEventListener('change', () => { addFiles(input.files); });
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+    dz.addEventListener('drop', e => {
+      e.preventDefault(); dz.classList.remove('drag-over');
+      addFiles(e.dataTransfer.files);
+    });
+  </script>
+</body>
+</html>
+"""
+
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -506,6 +692,29 @@ def index():
         )
 
     return render_template_string(HTML_TEMPLATE)
+
+
+@app.route("/pasmulkinta", methods=["GET", "POST"])
+def pasmulkinta():
+    if request.method == "POST":
+        files = request.files.getlist("csv_files")
+        if not files or all(f.filename == "" for f in files):
+            return "Failai neįkelti", 400
+        try:
+            csv_bytes = [f.read() for f in files if f.filename.endswith(".csv")]
+            wb = write_pasmulkinta_report(csv_bytes)
+        except Exception as e:
+            return f"Klaida pildant šabloną: {e}", 500
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name="Pasmulkinta_ataskaita.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    return render_template_string(PASMULKINTA_TEMPLATE)
 
 
 if __name__ == "__main__":
