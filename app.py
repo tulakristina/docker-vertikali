@@ -11,7 +11,7 @@ with open("tuscias_ver.xlsx", "rb") as f:
     TUSCIAS_BYTES = f.read()
 with open("Statistika_bendroji_bendra_sablonas.xlsx", "rb") as f:
     SABLONAS_BYTES = f.read()
-with open("Bendra ataskaita_2022.xlsx", "rb") as f:
+with open("PASMULKINTA_SABLONAS_BE PALYGINIMO.xlsx", "rb") as f:
     PASMULKINTA_BYTES = f.read()
 
 
@@ -241,48 +241,53 @@ def _norm(name):
 
 def write_pasmulkinta_report(csv_files):
     wb = load_workbook(io.BytesIO(PASMULKINTA_BYTES))
-    ws = wb["NEVALST_BUMB"]
+    ws = wb["PAV"]
 
     # Build map: normalised name -> row number (skip headers and totals)
     skip_kw = ('apskritis', 'apskr.', 'iš viso')
     row_map = {}
-    for r in range(11, 143):
+    for r in range(12, 144):
         v = ws.cell(row=r, column=2).value
         if v and not any(k in str(v).lower() for k in skip_kw):
             row_map[_norm(str(v))] = r
 
     # Aggregate data across all uploaded CSVs
-    # keys: normalised savivaldybė; values: [bib, fondas, _, isduotis, apsilankymai, biblio, internetas]
+    # keys: normalised savivaldybė; values: list per column field
     data = {}
     for raw_bytes in csv_files:
         text = raw_bytes.decode('utf-8-sig')
         for row in csv.DictReader(io.StringIO(text)):
             name = _norm(row['savivaldybe'])
-            d = data.setdefault(name, [0] * 7)
+            d = data.setdefault(name, [0] * 8)
             d[0] += int(float(row.get('bib_skaicius', 0) or 0))
-            d[1] += int(float(row.get('dok_fondas', 0) or 0))
-            d[2] += int(float(row.get('dok_isduotis', 0) or 0))
-            d[3] += int(float(row.get('fiziniai_apsilankymai', 0) or 0))
-            d[4] += int(float(row.get('prof_bibliotekininkai', 0) or 0))
-            d[5] += int(float(row.get('bib_internetas', 0) or 0))
+            d[1] += int(float(row.get('fiziniai_apsilankymai', 0) or 0))
+            d[2] += int(float(row.get('virtualus_apsilankymai', 0) or 0))
+            d[3] += int(float(row.get('dok_fondas', 0) or 0))
+            d[4] += int(float(row.get('dok_isduotis', 0) or 0))
+            d[5] += int(float(row.get('prof_bibliotekininkai', 0) or 0))
+            d[6] += int(float(row.get('bib_kompiuteriai', 0) or 0))
+            d[7] += int(float(row.get('bib_internetas', 0) or 0))
 
     # Write to template — 0 for rows with no matching CSV data
+    data_font  = Font(name='Times New Roman', size=9, bold=False)
+    data_align = Alignment(horizontal='center', vertical='center')
     for norm_name, r in row_map.items():
-        d = data.get(norm_name, [0] * 7)
+        d = data.get(norm_name, [0] * 8)
         ws.cell(row=r, column=3).value  = d[0]   # bib_skaicius
-        ws.cell(row=r, column=4).value  = d[1]   # dok_fondas
-        ws.cell(row=r, column=5).value  = 0       # vartotojai (undefined)
-        ws.cell(row=r, column=6).value  = d[2]   # dok_isduotis
-        ws.cell(row=r, column=7).value  = d[3]   # fiziniai_apsilankymai
-        ws.cell(row=r, column=8).value  = d[4]   # prof_bibliotekininkai
-        ws.cell(row=r, column=9).value  = 0       # kompiuteriai iš viso (nežinoma)
-        ws.cell(row=r, column=10).value = d[5]   # su internetu ← bib_internetas
+        ws.cell(row=r, column=4).value  = d[1]   # fiziniai_apsilankymai
+        ws.cell(row=r, column=5).value  = d[2]   # virtualus_apsilankymai
+        ws.cell(row=r, column=6).value  = d[3]   # dok_fondas
+        ws.cell(row=r, column=7).value  = d[4]   # dok_isduotis
+        ws.cell(row=r, column=8).value  = d[5]   # prof_bibliotekininkai
+        ws.cell(row=r, column=9).value  = d[6]   # bib_kompiuteriai
+        ws.cell(row=r, column=10).value = d[7]   # bib_internetas
+        for col in range(3, 11):
+            cell = ws.cell(row=r, column=col)
+            cell.font      = data_font
+            cell.alignment = data_align
 
-    # Remove year label
-    ws.cell(row=4, column=9).value = None
-
-    # Remove all sheets except NEVALST_BUMB
-    for name in [s for s in wb.sheetnames if s != "NEVALST_BUMB"]:
+    # Remove all sheets except PAV
+    for name in [s for s in wb.sheetnames if s != "PAV"]:
         del wb[name]
 
     return wb
@@ -545,15 +550,12 @@ PASMULKINTA_TEMPLATE = """
     .drop-zone p { color: #555; font-size: 0.9rem; }
     .drop-zone .hint { color: #999; font-size: 0.78rem; margin-top: 4px; }
     input[type="file"] { display: none; }
-    .file-list {
-      text-align: left; margin-bottom: 12px;
+    .file-name {
+      margin-top: 10px; padding: 8px 14px; background: #eef1ff;
+      border-radius: 8px; color: #4a6cf7; font-size: 0.85rem;
+      display: none; align-items: center; justify-content: center; gap: 8px;
     }
-    .file-item {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 6px 12px; background: #eef1ff; border-radius: 8px;
-      color: #4a6cf7; font-size: 0.85rem; margin-bottom: 6px;
-    }
-    .file-item .remove { cursor: pointer; color: #e74c3c; font-weight: bold; font-size: 1.1rem; margin-left: 8px; }
+    .file-name .remove { cursor: pointer; color: #e74c3c; font-weight: bold; font-size: 1.1rem; }
     button[type="submit"] {
       margin-top: 4px; padding: 12px 32px; font-size: 1rem;
       background: #4a6cf7; color: #fff; border: none; border-radius: 8px;
@@ -577,54 +579,42 @@ PASMULKINTA_TEMPLATE = """
                 d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0
                    0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
         </svg>
-        <p>Nutempkite failus čia arba paspauskite</p>
-        <p class="hint">Galima įkelti kelis .csv failus vienu metu</p>
+        <p>Nutempkite failą čia arba paspauskite</p>
+        <p class="hint">.csv formatas</p>
       </div>
-      <input type="file" name="csv_files" id="pInput" accept=".csv" multiple>
-      <div class="file-list" id="pFileList"></div>
+      <input type="file" name="csv_files" id="pInput" accept=".csv">
+      <div class="file-name" id="pFileName">
+        <span id="pFileText"></span>
+        <span class="remove" id="pRemove">&times;</span>
+      </div>
       <button type="submit" id="pSubmit" disabled>Atsisiųsti ataskaitą</button>
     </form>
   </div>
 
   <script>
-    const dz    = document.getElementById('pDz');
-    const input = document.getElementById('pInput');
-    const list  = document.getElementById('pFileList');
-    const btn   = document.getElementById('pSubmit');
-    let files   = [];
+    const dz     = document.getElementById('pDz');
+    const input  = document.getElementById('pInput');
+    const fname  = document.getElementById('pFileName');
+    const ftext  = document.getElementById('pFileText');
+    const rm     = document.getElementById('pRemove');
+    const btn    = document.getElementById('pSubmit');
 
-    function render() {
-      list.innerHTML = '';
-      files.forEach((f, i) => {
-        const item = document.createElement('div');
-        item.className = 'file-item';
-        item.innerHTML = `<span>${f.name}</span><span class="remove" data-i="${i}">&times;</span>`;
-        list.appendChild(item);
-      });
-      list.querySelectorAll('.remove').forEach(el =>
-        el.addEventListener('click', () => { files.splice(+el.dataset.i, 1); syncInput(); render(); })
-      );
-      btn.disabled = files.length === 0;
-    }
-
-    function syncInput() {
-      const dt = new DataTransfer();
-      files.forEach(f => dt.items.add(f));
-      input.files = dt.files;
-    }
-
-    function addFiles(newFiles) {
-      Array.from(newFiles).forEach(f => { if (f.name.endsWith('.csv')) files.push(f); });
-      syncInput(); render();
-    }
+    function show(f) { ftext.textContent = f.name; fname.style.display = 'flex'; btn.disabled = false; }
+    function clear()  { input.value = ''; fname.style.display = 'none'; btn.disabled = true; }
 
     dz.addEventListener('click', () => input.click());
-    input.addEventListener('change', () => { addFiles(input.files); });
+    input.addEventListener('change', () => { if (input.files.length) show(input.files[0]); });
+    rm.addEventListener('click', e => { e.stopPropagation(); clear(); });
     dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
     dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
     dz.addEventListener('drop', e => {
       e.preventDefault(); dz.classList.remove('drag-over');
-      addFiles(e.dataTransfer.files);
+      const f = e.dataTransfer.files[0];
+      if (f && f.name.endsWith('.csv')) { input.files = e.dataTransfer.files; show(f); }
+    });
+
+    document.getElementById('pForm').addEventListener('submit', () => {
+      setTimeout(clear, 1000);
     });
   </script>
 </body>
