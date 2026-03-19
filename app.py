@@ -248,16 +248,28 @@ def write_pasmulkinta_report(csv_files):
         if mr.min_row <= 143 and mr.max_row >= 12 and mr.min_col <= 10 and mr.max_col >= 3:
             ws.unmerge_cells(str(mr))
 
-    # Build map: normalised name -> row number (skip headers and totals)
-    skip_kw = ('apskritis', 'apskr.', 'iš viso')
+    # Scan template to build groups: (mun_rows, total_row) per apskritis + salyje row
+    groups = []
+    cur_mun_rows = []
+    salyje_row = None
     row_map = {}
     for r in range(12, 93):
         v = ws.cell(row=r, column=2).value
-        if v and not any(k in str(v).lower() for k in skip_kw):
+        if not v:
+            continue
+        vl = str(v).lower()
+        if 'iš viso šalyje' in vl:
+            salyje_row = r
+        elif 'iš viso' in vl:
+            groups.append((list(cur_mun_rows), r))
+            cur_mun_rows = []
+        elif 'apskr' in vl:
+            pass  # apskritis header — skip
+        else:
             row_map[_norm(str(v))] = r
+            cur_mun_rows.append(r)
 
     # Aggregate data across all uploaded CSVs
-    # keys: normalised savivaldybė; values: list per column field
     data = {}
     for raw_bytes in csv_files:
         text = raw_bytes.decode('utf-8-sig')
@@ -273,23 +285,42 @@ def write_pasmulkinta_report(csv_files):
             d[6] += int(float(row.get('bib_kompiuteriai', 0) or 0))
             d[7] += int(float(row.get('bib_internetas', 0) or 0))
 
-    # Write to template — 0 for rows with no matching CSV data
+    # Write municipality data
     data_font  = Font(name='Times New Roman', size=9, bold=False)
     data_align = Alignment(horizontal='center', vertical='center')
     for norm_name, r in row_map.items():
         d = data.get(norm_name, [0] * 8)
-        ws.cell(row=r, column=3).value  = d[0]   # bib_skaicius
-        ws.cell(row=r, column=4).value  = d[1]   # fiziniai_apsilankymai
-        ws.cell(row=r, column=5).value  = d[2]   # virtualus_apsilankymai
-        ws.cell(row=r, column=6).value  = d[3]   # dok_fondas
-        ws.cell(row=r, column=7).value  = d[4]   # dok_isduotis
-        ws.cell(row=r, column=8).value  = d[5]   # prof_bibliotekininkai
-        ws.cell(row=r, column=9).value  = d[6]   # bib_kompiuteriai
-        ws.cell(row=r, column=10).value = d[7]   # bib_internetas
+        ws.cell(row=r, column=3).value  = d[0]
+        ws.cell(row=r, column=4).value  = d[1]
+        ws.cell(row=r, column=5).value  = d[2]
+        ws.cell(row=r, column=6).value  = d[3]
+        ws.cell(row=r, column=7).value  = d[4]
+        ws.cell(row=r, column=8).value  = d[5]
+        ws.cell(row=r, column=9).value  = d[6]
+        ws.cell(row=r, column=10).value = d[7]
         for col in range(3, 11):
             cell = ws.cell(row=r, column=col)
             cell.font      = data_font
             cell.alignment = data_align
+
+    # Write "Iš viso" subtotals per apskritis
+    for mun_rows, total_row in groups:
+        for col in range(3, 11):
+            ws.cell(row=total_row, column=col).value = sum(
+                ws.cell(row=r, column=col).value or 0 for r in mun_rows
+            )
+            ws.cell(row=total_row, column=col).font      = data_font
+            ws.cell(row=total_row, column=col).alignment = data_align
+
+    # Write "Iš viso šalyje" grand total
+    if salyje_row:
+        all_mun = [r for mun_rows, _ in groups for r in mun_rows]
+        for col in range(3, 11):
+            ws.cell(row=salyje_row, column=col).value = sum(
+                ws.cell(row=r, column=col).value or 0 for r in all_mun
+            )
+            ws.cell(row=salyje_row, column=col).font      = data_font
+            ws.cell(row=salyje_row, column=col).alignment = data_align
 
     # Remove all sheets except PAV
     for name in [s for s in wb.sheetnames if s != "PAV"]:
