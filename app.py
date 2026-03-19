@@ -243,10 +243,15 @@ def write_pasmulkinta_report(csv_files):
     wb = load_workbook(io.BytesIO(PASMULKINTA_BYTES))
     ws = wb["PAV"]
 
+    # Unmerge any merged cells overlapping the data area (rows 12-143, cols 3-10)
+    for mr in list(ws.merged_cells.ranges):
+        if mr.min_row <= 143 and mr.max_row >= 12 and mr.min_col <= 10 and mr.max_col >= 3:
+            ws.unmerge_cells(str(mr))
+
     # Build map: normalised name -> row number (skip headers and totals)
     skip_kw = ('apskritis', 'apskr.', 'iš viso')
     row_map = {}
-    for r in range(12, 144):
+    for r in range(12, 93):
         v = ws.cell(row=r, column=2).value
         if v and not any(k in str(v).lower() for k in skip_kw):
             row_map[_norm(str(v))] = r
